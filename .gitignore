@@ -1,0 +1,12 @@
+# Database Configuration
+db_connect.php
+
+# PHP/Composer
+vendor/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
