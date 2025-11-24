@@ -1,17 +1,98 @@
-<?php include 'db_connect.php'; ?>
+<?php
+
+
+$host = "localhost";
+$user = "root";      // XAMPP 기본 아이디
+$pw = "";            // XAMPP 기본 비번
+$dbName = "team17";  
+
+$conn = new mysqli($host, $user, $pw, $dbName);
+
+// 연결 실패하면 에러 메시지 출력 후 종료
+if ($conn->connect_error) {
+    die("DB 연결 실패: " . $conn->connect_error);
+}
+
+// 2. 변수 초기화 (기본값 2025년)
+$current_year = 2025;
+$current_season_id = 11; // 2025년 season_id
+
+// 3. 시즌 목록 가져오기
+$seasons_option = [];
+$season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
+$season_result = $conn->query($season_query);
+if ($season_result) {
+    while ($row = $season_result->fetch_assoc()) {
+        $seasons_option[$row['season_id']] = $row['year'];
+    }
+}
+
+// 4. 사용자 입력 처리 (연도 변경 시)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
+    $current_season_id = intval($_POST['season_id']);
+    if(isset($seasons_option[$current_season_id])) {
+        $current_year = $seasons_option[$current_season_id];
+    }
+}
+
+// 5. 수비 데이터 조회 쿼리
+$sql = "
+    SELECT 
+        p.name, 
+        t.team_name, 
+        d.* FROM defense_stat d
+    JOIN player p ON d.player_id = p.player_id
+    LEFT JOIN team t ON p.team_id = t.team_id
+    WHERE d.season_id = ? 
+    ORDER BY d.dWAR DESC
+";
+
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $current_season_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+$defense_data = [];
+while ($row = $result->fetch_assoc()) {
+    $defense_data[] = $row;
+}
+
+$stmt->close();
+// $conn->close(); 
+?>
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <title>수비 기록 조회</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
     <style>
-        body { font-family: 'Pretendard', sans-serif; background-color: #f8f9fa; padding: 20px; }
-        .nav-bar { background-color: #333; padding: 15px 0; margin-bottom: 30px; }
-        .nav-link { text-decoration: none; color: #ccc; font-weight: bold; padding: 8px 12px; margin-right: 10px; }
-        .nav-link:hover, .nav-link.active { color: #fff; background-color: #00d2d3; border-radius: 5px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; }
-        h2 { border-left: 5px solid #00d2d3; padding-left: 15px; margin-bottom: 20px; color: #333; }
+        body { font-family: 'Inter', sans-serif; margin: 0; background-color: #121212; color: #E0E0E0; }
+        
+        .nav-bar { background-color: #212121; padding: 15px 0; border-bottom: 1px solid #333333; }
+        .nav-link { color: #CCCCCC; text-decoration: none; padding: 0 15px; font-weight: bold; }
+        .nav-link:hover { color: #FFFFFF; }
+        .nav-link.active { color: #64ffda; border-bottom: 3px solid #64ffda; }
+        
+        .container { max-width: 1200px; margin: 30px auto; background: #212121; padding: 30px; border-radius: 8px; box-shadow: 0 0 15px rgba(0, 0, 0, 0.5); }
+        h2 { color: #FFFFFF; border-bottom: 2px solid #333333; padding-bottom: 10px; margin-bottom: 20px; }
+        
+        .filter-form { background-color: #2c2c2c; padding: 20px; border-radius: 6px; margin-bottom: 20px; }
+        select, button { padding: 8px; background-color: #333; color: #fff; border: 1px solid #555; margin-right: 10px; border-radius: 4px;}
+        button { background-color: #64ffda; color: #121212; font-weight: bold; border: none; cursor: pointer; }
+        button:hover { background-color: #92ffe6; }
+
+        table.dataTable { background-color: #212121; color: #E0E0E0; width: 100%; border-collapse: collapse; }
+        table.dataTable th { background-color: #333; color: #FFFFFF; border-bottom: 1px solid #444; text-align: center; padding: 12px; }
+        table.dataTable td { background-color: #212121; border-bottom: 1px solid #444; text-align: center; padding: 10px; }
+        table.dataTable tr:nth-child(even) td { background-color: #2c2c2c; }
+        table.dataTable tr:hover td { background-color: #444 !important; }
+        
+        .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, 
+        .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_paginate { color: #ccc !important; }
+        .dataTables_wrapper .dataTables_length select, .dataTables_wrapper .dataTables_filter input { background-color: #333; color: #fff; border: 1px solid #555; }
     </style>
 </head>
 <body>
@@ -19,18 +100,31 @@
 <nav class="nav-bar">
     <div style="max-width: 1100px; margin: auto; display: flex; justify-content: space-between;">
         <a href="/team17/cost_efficiency_rank.php" class="nav-link">가성비 랭킹</a>
-        <a href="/team17/player_detail.php" class="nav-link">선수 상세 기록</a>
-        <a href="/team17/fa_vote.php" class="nav-link">FA 연봉 예측</a>
+        <a href="/team17/player_detail.php" class="nav-link">선수별 페이지</a>
+        <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
         <a href="/team17/analysis_window.php" class="nav-link">선수 성장 추이</a>
-        <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 평균</a>
-        <a href="/team17/analysis_rollup.php" class="nav-link">계층별 효율 분석</a>
-        <a href="/team17/attack_stat.php" class="nav-link">타격 기록 조회</a>
-        <a href="/team17/defense_stat.php" class="nav-link active">수비 기록 조회</a>
+        <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 연봉</a>
+        <a href="/team17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
+        <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
+        <a href="/team17/defense_stat.php" class="nav-link active">수비 기록</a>
     </div>
 </nav>
 
 <div class="container">
-    <h2>🛡️ 수비 기록 (Fielding Stats)</h2>
+    <h2><?php echo $current_year; ?> 시즌 수비 기록 (Fielding Stats)</h2>
+
+    <form method="POST" action="defense_stat.php" class="filter-form">
+        <label>시즌 선택: </label>
+        <select name="season_id">
+            <?php foreach ($seasons_option as $id => $year): ?>
+                <option value="<?php echo $id; ?>" <?php echo ($id == $current_season_id) ? 'selected' : ''; ?>>
+                    <?php echo $year; ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit">조회</button>
+    </form>
+
     <table id="defenseTable" class="display" style="width:100%">
         <thead>
             <tr>
@@ -46,39 +140,21 @@
             </tr>
         </thead>
         <tbody>
-            <?php
-            // 수비 데이터 가져오기 (defense_stat 테이블 조인)
-            $sql = "
-                SELECT 
-                    p.name, 
-                    t.team_name, 
-                    d.* FROM defense_stat d
-                JOIN player p ON d.player_id = p.player_id
-                LEFT JOIN team t ON p.team_id = t.team_id
-                ORDER BY d.G DESC
-            ";
-            
-            if(isset($conn)) {
-                $result = $conn->query($sql);
-                $rank = 1;
-                if ($result) {
-                    while($row = $result->fetch_assoc()) {
-                        echo "<tr>";
-                        echo "<td>" . $rank++ . "</td>";
-                        echo "<td>" . htmlspecialchars($row["name"]) . "</td>";
-                        echo "<td>" . htmlspecialchars($row["team_name"]) . "</td>";
-                        // DB 컬럼명 그대로 매칭
-                        echo "<td>" . $row["G"] . "</td>";
-                        echo "<td>" . $row["GS"] . "</td>";
-                        echo "<td>" . $row["ASS"] . "</td>";
-                        echo "<td>" . $row["E"] . "</td>";
-                        echo "<td>" . $row["RF9"] . "</td>";
-                        echo "<td>" . $row["dWAR"] . "</td>";
-                        echo "</tr>";
-                    }
-                }
-            }
-            ?>
+            <?php 
+            $rank = 1;
+            foreach ($defense_data as $row): ?>
+            <tr>
+                <td><?php echo $rank++; ?></td>
+                <td><?php echo htmlspecialchars($row["name"]); ?></td>
+                <td><?php echo htmlspecialchars($row["team_name"]); ?></td>
+                <td><?php echo $row["G"]; ?></td>
+                <td><?php echo $row["GS"]; ?></td>
+                <td><?php echo $row["ASS"]; ?></td>
+                <td><?php echo $row["E"]; ?></td>
+                <td><?php echo $row["RF9"]; ?></td>
+                <td style="color: #64ffda; font-weight:bold;"><?php echo $row["dWAR"]; ?></td>
+            </tr>
+            <?php endforeach; ?>
         </tbody>
     </table>
 </div>
@@ -88,10 +164,17 @@
 <script>
     $(document).ready(function() {
         $('#defenseTable').DataTable({
-            "order": [[ 3, "desc" ]], // 경기수(G) 기준 내림차순
-            "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json" }
+            "order": [[ 8, "desc" ]], // 기본 정렬: dWAR(마지막 컬럼) 내림차순
+            "pageLength": 20,
+            "language": {
+                "search": "선수 검색:",
+                "lengthMenu": "_MENU_ 명씩 보기",
+                "info": "총 _TOTAL_명 중 _START_ - _END_",
+                "paginate": { "next": "다음", "previous": "이전" }
+            }
         });
     });
 </script>
+
 </body>
 </html>
