@@ -1,6 +1,6 @@
 <?php
 // =================================================================
-// player_detail.php: 선수 상세 기록 페이지 (수정됨)
+// player_detail.php: 선수 상세 기록 페이지 (키/몸무게 제거됨)
 // =================================================================
 
 include 'db_connect.php';
@@ -55,8 +55,8 @@ if ($player_id > 0) {
                  WHERE p.player_id = $player_id";
     $player_info = $conn->query($info_sql)->fetch_assoc();
 
-    // 4-2. 최근 5년(2021-2025) 타격 기록 (요청하신 컬럼 순서 반영)
-    $att_sql = "SELECT s.year, a.AVG, a.G, a.ePA, a.AB, a.H, a.HR, a.RBI, a.SB, a.OBP, a.SLG, a.WRC, a.OWAR 
+    // 4-2. 최근 5년(2021-2025) 타격 기록 (wRC 제거됨)
+    $att_sql = "SELECT s.year, a.AVG, a.G, a.ePA, a.AB, a.H, a.HR, a.RBI, a.SB, a.OBP, a.SLG, a.OWAR 
                 FROM attack_stat a 
                 JOIN season s ON a.season_id = s.season_id 
                 WHERE a.player_id = $player_id AND s.year BETWEEN 2021 AND 2025 
@@ -187,7 +187,6 @@ if ($player_id > 0) {
                     <span class="tag"><?php echo $player_info['pos_category']; ?></span>
                 </p>
                 <p><strong>생년월일:</strong> <?php echo $player_info['birth_date']; ?></p>
-                <p><strong>신체조건:</strong> <?php echo $player_info['height']; ?>cm / <?php echo $player_info['weight']; ?>kg</p>
                 <p><strong>입단 계약금:</strong> <?php echo number_format($player_info['signing_bonus']); ?>만원</p>
                 <p><strong>경력:</strong> <?php echo htmlspecialchars($player_info['career']); ?></p>
             </div>
@@ -212,13 +211,12 @@ if ($player_id > 0) {
                         <th>도루</th>
                         <th>출루율</th>
                         <th>장타율</th>
-                        <th>wRC</th>
                         <th>WAR</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($attack_stats)): ?>
-                        <tr><td colspan="13">기록이 없습니다.</td></tr>
+                        <tr><td colspan="12">기록이 없습니다.</td></tr>
                     <?php else: ?>
                         <?php foreach($attack_stats as $stat): ?>
                         <tr>
@@ -233,7 +231,6 @@ if ($player_id > 0) {
                             <td><?php echo $stat['SB']; ?></td>
                             <td><?php echo $stat['OBP']; ?></td>
                             <td><?php echo $stat['SLG']; ?></td>
-                            <td><?php echo $stat['WRC']; ?></td>
                             <td><?php echo $stat['OWAR']; ?></td>
                         </tr>
                         <?php endforeach; ?>
