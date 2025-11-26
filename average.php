@@ -1,6 +1,6 @@
 <?php
 // =================================================================
-// analysis_aggregate.php: 팀/포지션별 평균 비교 (최종 수정: 모든 색상 제거)
+// analysis_aggregate.php: 팀/포지션별 평균 비교 (그래프 시각화 추가)
 // =================================================================
 
 include 'db_connect.php';
@@ -60,8 +60,21 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 $stats_list = [];
+// 차트용 배열 초기화
+$chart_labels = [];
+$chart_salary = [];
+$chart_war = [];
+
 while ($row = $result->fetch_assoc()) {
     $stats_list[] = $row;
+    
+    // 차트 데이터 채우기
+    $chart_labels[] = $row['team_name'];
+    $chart_salary[] = round($row['avg_salary']); // 반올림
+    
+    // WAR가 없으면 0으로 처리
+    $total_war = ($row['avg_owar'] ?? 0) + ($row['avg_dwar'] ?? 0);
+    $chart_war[] = round($total_war, 2);
 }
 ?>
 
@@ -70,6 +83,8 @@ while ($row = $result->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <title>팀/포지션별 평균 비교</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <style>
         /* 공통 디자인 */
         body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: #121212; color: #E0E0E0; }
@@ -85,6 +100,9 @@ while ($row = $result->fetch_assoc()) {
         select, button { padding: 10px 15px; border-radius: 6px; border: 1px solid #555; background: #333; color: #FFF; }
         button { background: #64ffda; color: #121212; font-weight: bold; border: none; cursor: pointer; }
         button:hover { background: #92ffe6; }
+
+        /* 차트 박스 */
+        .chart-container { background: #212121; padding: 20px; border-radius: 12px; border: 1px solid #444; margin-bottom: 30px; height: 400px; }
 
         /* 결과 테이블 */
         .result-table { width: 100%; border-collapse: collapse; background: #212121; border-radius: 8px; overflow: hidden; }
@@ -118,26 +136,27 @@ while ($row = $result->fetch_assoc()) {
 
     <form method="GET" class="filter-box">
         <div class="filter-title">조건 설정</div>
-        
         <select name="season">
             <?php foreach($seasons as $id => $y) echo "<option value='$id' ".($search_season==$id?'selected':'').">$y 시즌</option>"; ?>
         </select>
-
         <select name="team">
             <option value="ALL" <?php echo ($search_team=='ALL'?'selected':''); ?>>전체 구단</option>
             <?php foreach($teams as $id => $name) echo "<option value='$id' ".($search_team==$id?'selected':'').">$name</option>"; ?>
         </select>
-
         <select name="pos">
             <?php foreach($positions as $p) echo "<option value='$p' ".($search_pos==$p?'selected':'').">$p</option>"; ?>
         </select>
-
         <button type="submit">조회하기</button>
     </form>
 
     <?php if(empty($stats_list)): ?>
         <div class="empty-msg">해당 조건의 데이터가 없습니다.</div>
     <?php else: ?>
+        
+        <div class="chart-container">
+            <canvas id="myChart"></canvas>
+        </div>
+
         <table class="result-table">
             <thead>
                 <tr>
@@ -148,7 +167,7 @@ while ($row = $result->fetch_assoc()) {
                     <th>평균 타율</th>
                     <th>평균 홈런</th>
                     <th>평균 타점</th>
-                    <th>평균 OPS(출+장)</th>
+                    <th>평균 OPS</th>
                     <th>평균 공격 WAR</th>
                     <th>평균 수비 WAR</th>
                 </tr>
@@ -173,7 +192,6 @@ while ($row = $result->fetch_assoc()) {
                     <?php endif; ?>
 
                     <td><?php echo number_format($row['avg_owar'], 2); ?></td>
-                    
                     <td><?php echo number_format($row['avg_dwar'], 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
@@ -183,6 +201,68 @@ while ($row = $result->fetch_assoc()) {
     <?php endif; ?>
 
 </div>
+
+<script>
+<?php if(!empty($stats_list)): ?>
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: <?php echo json_encode($chart_labels); ?>, // 팀 이름들
+            datasets: [
+                {
+                    label: '평균 연봉 (만원)',
+                    data: <?php echo json_encode($chart_salary); ?>,
+                    backgroundColor: '#64ffda', // 민트색
+                    yAxisID: 'y',
+                    order: 2
+                },
+                {
+                    label: '평균 총 WAR (공격+수비)',
+                    data: <?php echo json_encode($chart_war); ?>,
+                    borderColor: '#ff6b6b', // 빨간색 선
+                    backgroundColor: '#ff6b6b',
+                    type: 'line', // 꺾은선 그래프로 표현
+                    yAxisID: 'y1',
+                    order: 1,
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { labels: { color: '#fff' } },
+                title: { display: true, text: '연봉(막대) vs 효율(선) 비교', color: '#fff', font: { size: 16 } }
+            },
+            scales: {
+                x: { ticks: { color: '#ccc' }, grid: { color: '#444' } },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    ticks: { color: '#64ffda' },
+                    grid: { color: '#444' },
+                    title: { display: true, text: '연봉', color: '#64ffda' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    ticks: { color: '#ff6b6b' },
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'WAR (승리 기여도)', color: '#ff6b6b' }
+                }
+            }
+        }
+    });
+<?php endif; ?>
+</script>
 
 </body>
 </html>
