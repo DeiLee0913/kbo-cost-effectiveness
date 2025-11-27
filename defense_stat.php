@@ -1,12 +1,9 @@
 <?php
 
-// 1. DB 연결 설정
 include 'db_connect.php'; 
 
-// 2. 변수 초기화
-$current_season_id = 11; // 2025년 (기본값)
+$current_season_id = 11; 
 
-// 3. 시즌 목록 가져오기 및 현재 시즌 ID 결정
 $seasons_option = [];
 $season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
 $season_result = $conn->query($season_query);
@@ -21,7 +18,6 @@ if ($season_result) {
     }
 }
 
-// 4. 사용자 입력 처리 (POST 요청이 있으면 덮어쓰기)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
     $selected_id = intval($_POST['season_id']);
     if (array_key_exists($selected_id, $seasons_option)) {
@@ -29,19 +25,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
     }
 }
 
-// 선택된 시즌 ID에 해당하는 연도 설정
 $current_year = $seasons_option[$current_season_id] ?? 2025;
 
-
-// 5. 수비 데이터 조회 쿼리
 $sql = "
     SELECT 
         p.name, 
         t.team_name, 
-        d.G, d.GS, d.ASS, d.E, d.RF9, d.RAA, d.POSAdj, d.Err_RAA, d.WAAwoPOS
+        d.G, d.GS, d.ASS, d.E, d.RF9, d.RAA, d.POSAdj, d.Err_RAA, d.WAAwoPOS,
+        a.dWAR
     FROM defense_stat d
     JOIN player p ON d.player_id = p.player_id
     LEFT JOIN team t ON p.team_id = t.team_id
+    LEFT JOIN attack_stat a ON d.player_id = a.player_id AND d.season_id = a.season_id
     WHERE d.season_id = ? 
     ORDER BY d.RAA DESC, d.GS DESC";
 
@@ -49,7 +44,7 @@ $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $current_season_id);
 
 if (!$stmt->execute()) {
-    die("쿼리 실행 오류: " . $stmt->error . " | Season ID: " . $current_season_id);
+    die("Query Error: " . $stmt->error);
 }
 $result = $stmt->get_result();
 
@@ -59,7 +54,6 @@ while ($row = $result->fetch_assoc()) {
 }
 
 $stmt->close();
-// $conn->close(); 
 ?>
 
 <!DOCTYPE html>
@@ -103,7 +97,7 @@ $stmt->close();
         <a href="/team17/cost_efficiency_rank.php" class="nav-link">가성비 랭킹</a>
         <a href="/team17/player_detail.php" class="nav-link">선수별 페이지</a>
         <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
-        <a href="/team17/analysis_window.php" class="nav-link">선수 성장 추이</a>
+        <a href="/team17/player_growth.php" class="nav-link">선수 성장 추이</a>
         <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 연봉</a>
         <a href="/team17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
         <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
@@ -136,8 +130,12 @@ $stmt->close();
                 <th>선발(GS)</th>
                 <th>보살(ASS)</th>
                 <th>실책(E)</th>
-                <th>RF9</th>
-                <th>RAA</th>       <th>POSAdj</th>    <th>Err_RAA</th> </tr>
+                <th>RF</th>
+                <th>RAA</th>
+                <th>POSAdj</th>
+                <th>Err_RAA</th>
+                <th>dWAR</th>
+            </tr>
         </thead>
         <tbody>
             <?php 
@@ -152,7 +150,11 @@ $stmt->close();
                 <td><?php echo $row["ASS"]; ?></td>
                 <td><?php echo $row["E"]; ?></td>
                 <td><?php echo $row["RF9"]; ?></td>
-                <td style="color: #64ffda; font-weight:bold;"><?php echo $row["RAA"]; ?></td> <td><?php echo $row["POSAdj"]; ?></td>    <td><?php echo $row["Err_RAA"]; ?></td>  </tr>
+                <td style="color: #64ffda; font-weight:bold;"><?php echo $row["RAA"]; ?></td>
+                <td><?php echo $row["POSAdj"]; ?></td>
+                <td><?php echo $row["Err_RAA"]; ?></td>
+                <td style="color: #4dabf7; font-weight:bold;"><?php echo number_format($row["dWAR"], 2); ?></td>
+            </tr>
             <?php endforeach; ?>
         </tbody>
     </table>

@@ -1,13 +1,7 @@
 <?php
-$host = "localhost";
-$user = "root";
-$pw = "";
-$dbName = "team17";
+include 'db_connect.php';
 
-$conn = new mysqli($host, $user, $pw, $dbName);
-if ($conn->connect_error) {
-    die("");
-}
+
 
 $seasons = [];
 $res = $conn->query("SELECT season_id, year FROM season ORDER BY year DESC");
