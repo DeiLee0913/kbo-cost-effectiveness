@@ -8,24 +8,19 @@
 include 'db_connect.php'; 
 
 // 2. 사용자 입력 변수 초기값 설정
-$current_season_id = 11; // 2025 시즌
-$min_ePA = 100;          // 최소 타석 기본값
-$position_filter = 'ALL';// 포지션 전체 검색 ('ALL'은 DB 쿼리에서 '%%'로 변환됨)
+// DB에 데이터가 있다는 가정 하에, 기본 시즌 ID는 11 (2025)로 유지
+$current_season_id = 11; 
+$min_ePA = 100;          
+$position_filter = 'ALL';
 
 // 3. 사용자 입력 값 처리 (POST 요청 확인)
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // 시즌 값
+    
+    // ✅ 시즌 ID 값 (HTML 폼에서 season_id를 직접 넘긴다고 가정)
     if (isset($_POST['season']) && is_numeric($_POST['season'])) {
-        $selected_year = intval($_POST['season']);
-        
-        if ($id_row = $id_result->fetch_assoc()) {
-            $current_season_id = $id_row['season_id'];
-        } else {
-            // 해당 연도가 DB에 없을 경우 (오류 방지)
-            $current_season_id = -1; 
-        }
-        $id_query->close();
+        $current_season_id = intval($_POST['season']);
     }
+    
     // 최소 타석
     if (isset($_POST['min_ePA']) && is_numeric($_POST['min_ePA'])) {
         $min_ePA = intval($_POST['min_ePA']);
@@ -40,42 +35,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 $positions_option = [];
 $seasons_option = [];
 
-// 4-1. 포지션 옵션 조회 및 디버깅
+// 4-1. 포지션 옵션 조회 (디버깅 출력 제거)
 $pos_query = "SELECT DISTINCT pos_category FROM position_detail WHERE pos_category != ''";
 $pos_result = $conn->query($pos_query);
 
-if (!$pos_result) {
-    // DB 오류 시 출력 (DB 쿼리 실패 진단용)
-    echo "<div><strong>Error fetching positions:</strong> " . $conn->error . "</div>";
-} else {
+if ($pos_result) {
     while ($row = $pos_result->fetch_assoc()) {
         $positions_option[] = $row['pos_category'];
     }
-    // 성공했지만 목록이 비어있는 경우 (데이터가 없는 경우 진단용)
-    if (empty($positions_option)) {
-        echo "<div><strong>DEBUG:</strong> Position categories found zero rows. Check position_detail INSERT data.</div>";
-    }
 }
 
-// 4-2. 시즌 옵션 조회 및 디버깅
+// 4-2. 시즌 옵션 조회 (디버깅 출력 제거)
 $season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
 $season_result = $conn->query($season_query);
 
-if (!$season_result) {
-    // DB 오류 시 출력 (DB 쿼리 실패 진단용)
-    echo "<div><strong>Error fetching seasons:</strong> " . $conn->error . "</div>";
-} else {
+if ($season_result) {
     while ($row = $season_result->fetch_assoc()) {
         $seasons_option[$row['season_id']] = $row['year'];
     }
-     // 성공했지만 목록이 비어있는 경우 (데이터가 없는 경우 진단용)
-    if (empty($seasons_option)) {
-        echo "<div><strong>DEBUG:</strong> Season years found zero rows. Check season INSERT data.</div>";
+    // 기본 시즌 ID가 유효한지 확인 (기본값 11이 없을 경우 대비)
+    if (!array_key_exists($current_season_id, $seasons_option) && !empty($seasons_option)) {
+         // 기본값이 없으면 목록 중 가장 최신 시즌을 사용
+        $current_season_id = array_key_first($seasons_option);
     }
 }
 
+
 // 5. 가성비 랭킹 쿼리 준비 (Windowing Function RANK() 사용)
-// 가성비 지수: (oWAR + dWAR) / 연봉 * 100000 (연봉 단위가 '만원'이므로 100000을 곱함)
+// P.weight, P.height 컬럼은 사용되지 않으므로 쿼리 수정 필요 없음.
 $sql = "SELECT P.name, T.team_name, PD.pos_category, S.amount AS salary, A.oWAR, A.dWAR,
                (A.oWAR + A.dWAR) / S.amount * 100000 AS value_index,
                RANK() OVER (ORDER BY (A.oWAR + A.dWAR) / S.amount DESC) AS ranking
@@ -91,9 +78,10 @@ $sql = "SELECT P.name, T.team_name, PD.pos_category, S.amount AS salary, A.oWAR,
 
 // 6. Prepared Statement 실행
 $stmt = $conn->prepare($sql);
+// 'ALL' 필터 시 DB에서 모든 것을 찾도록 '%%'로 변환
 $final_pos_filter = ($position_filter === 'ALL') ? '%%' : $position_filter;
 
-// bind_param: i (integer), i (integer), s (string)
+// bind_param: i (integer: season_id), i (integer: min_ePA), s (string: pos_category)
 $stmt->bind_param("iis", $current_season_id, $min_ePA, $final_pos_filter);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -255,18 +243,21 @@ $conn->close();
 <nav class="nav-bar">
     <div style="max-width: 1100px; margin: auto; display: flex; justify-content: space-between;">
         <a href="/team17/cost_efficiency_rank.php" class="nav-link active">가성비 랭킹</a>
-        <a href="/team17/player_detail.php" class="nav-link">선수별 페이지</a>
-        <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
+        
+        <a href="/team17/player_detail.php" class="nav-link">선수 상세 기록</a>
+        <a href="/team17/fa_vote.php" class="nav-link">FA 연봉 예측</a>
+        
         <a href="/team17/analysis_window.php" class="nav-link">선수 성장 추이</a>
-        <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 연봉</a>
-        <a href="/t eam17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
-        <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
-        <a href="/team17/defense_stat.php" class="nav-link"> 수비 기록</a>
+        <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 평균</a>
+        <a href="/team17/analysis_rollup.php" class="nav-link">계층별 효율 분석</a>
+        
+        <a href="/team17/attack_stat.php" class="nav-link">타격 기록 조회</a>
+        <a href="/team17/defense_stat.php" class="nav-link">수비 기록 조회</a>
     </div>
 </nav>
 
 <div class="container">
-    <h2>⚾ KBO 선수 가성비 랭킹 분석</h2>
+    <h2>KBO 선수 가성비 랭킹 분석</h2>
 
     <form method="POST" action="cost_efficiency_rank.php" class="filter-form">
         <h3>필터링 조건 입력 (Windowing Function RANK())</h3>
