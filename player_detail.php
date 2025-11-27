@@ -1,73 +1,69 @@
 <?php
-// =================================================================
-// player_detail.php: 선수 상세 기록 페이지 (키/몸무게 제거됨)
-// =================================================================
-
 include 'db_connect.php';
 
-// 1. 변수 초기화
-$player_id = isset($_GET['player_id']) ? intval($_GET['player_id']) : 0;
-$search_keyword = isset($_GET['keyword']) ? $_GET['keyword'] : '';
-$team_filter = isset($_GET['team']) ? $_GET['team'] : 'ALL';
-$pos_filter = isset($_GET['pos']) ? $_GET['pos'] : 'ALL';
-
-// 2. 필터 옵션 가져오기
 $teams = [];
-$positions = [];
-$team_res = $conn->query("SELECT team_id, team_name FROM team");
-while($r = $team_res->fetch_assoc()) { $teams[$r['team_id']] = $r['team_name']; }
-$pos_res = $conn->query("SELECT DISTINCT pos_category FROM position_detail");
-while($r = $pos_res->fetch_assoc()) { $positions[] = $r['pos_category']; }
-
-// 3. 검색 로직
-$search_results = [];
-if ($search_keyword || $team_filter !== 'ALL' || $pos_filter !== 'ALL') {
-    $search_sql = "SELECT p.player_id, p.name, t.team_name, pd.pos_category 
-                   FROM player p 
-                   LEFT JOIN team t ON p.team_id = t.team_id 
-                   LEFT JOIN position_detail pd ON p.pos_id = pd.pos_id 
-                   WHERE 1=1";
-    
-    if ($search_keyword) {
-        $search_sql .= " AND p.name LIKE '%" . $conn->real_escape_string($search_keyword) . "%'";
-    }
-    if ($team_filter !== 'ALL') {
-        $search_sql .= " AND p.team_id = " . intval($team_filter);
-    }
-    if ($pos_filter !== 'ALL') {
-        $search_sql .= " AND pd.pos_category = '" . $conn->real_escape_string($pos_filter) . "'";
-    }
-    $res = $conn->query($search_sql);
-    while($r = $res->fetch_assoc()) { $search_results[] = $r; }
+$t_res = $conn->query("SELECT team_id, team_name FROM team");
+while ($row = $t_res->fetch_assoc()) {
+    $teams[$row['team_id']] = $row['team_name'];
 }
 
-// 4. 상세 정보 로직
+$positions = [];
+$p_res = $conn->query("SELECT DISTINCT pos_category FROM position_detail WHERE pos_category IS NOT NULL");
+while ($row = $p_res->fetch_assoc()) {
+    $positions[] = $row['pos_category'];
+}
+
+$filter_team = isset($_GET['f_team']) ? $_GET['f_team'] : 'ALL';
+$filter_pos = isset($_GET['f_pos']) ? $_GET['f_pos'] : 'ALL';
+
+$player_sql = "
+    SELECT p.player_id, p.name, t.team_id, t.team_name, pd.pos_category
+    FROM player p
+    LEFT JOIN team t ON p.team_id = t.team_id
+    LEFT JOIN position_detail pd ON p.pos_id = pd.pos_id
+    WHERE 1=1
+";
+
+if ($filter_team !== 'ALL') {
+    $player_sql .= " AND p.team_id = " . intval($filter_team);
+}
+if ($filter_pos !== 'ALL') {
+    $player_sql .= " AND pd.pos_category = '" . $conn->real_escape_string($filter_pos) . "'";
+}
+
+$player_sql .= " ORDER BY p.name";
+
+$players = [];
+$player_res = $conn->query($player_sql);
+while ($row = $player_res->fetch_assoc()) {
+    $players[] = $row;
+}
+
+$selected_player_id = isset($_GET['player_id']) ? intval($_GET['player_id']) : 0;
+
 $player_info = null;
 $attack_stats = [];
 $defense_stats = [];
 
-if ($player_id > 0) {
-    // 4-1. 선수 기본 정보
+if ($selected_player_id > 0) {
     $info_sql = "SELECT p.*, t.team_name, pd.pos_category 
                  FROM player p 
                  LEFT JOIN team t ON p.team_id = t.team_id 
                  LEFT JOIN position_detail pd ON p.pos_id = pd.pos_id 
-                 WHERE p.player_id = $player_id";
+                 WHERE p.player_id = $selected_player_id";
     $player_info = $conn->query($info_sql)->fetch_assoc();
 
-    // 4-2. 최근 5년(2021-2025) 타격 기록 (wRC 제거됨)
-    $att_sql = "SELECT s.year, a.AVG, a.G, a.ePA, a.AB, a.H, a.HR, a.RBI, a.SB, a.OBP, a.SLG, a.OWAR 
+    $att_sql = "SELECT s.year, a.AVG, a.G, a.ePA, a.AB, a.H, a.RBI, a.SB, a.OBP, a.OWAR 
                 FROM attack_stat a 
                 JOIN season s ON a.season_id = s.season_id 
-                WHERE a.player_id = $player_id AND s.year BETWEEN 2021 AND 2025 
+                WHERE a.player_id = $selected_player_id AND s.year BETWEEN 2021 AND 2025 
                 ORDER BY s.year DESC";
     $att_res = $conn->query($att_sql);
     while($r = $att_res->fetch_assoc()) { $attack_stats[] = $r; }
 
-    // 4-3. 최근 5년(2021-2025) 수비 기록
     $def_sql = "SELECT s.year, d.* FROM defense_stat d 
                 JOIN season s ON d.season_id = s.season_id 
-                WHERE d.player_id = $player_id AND s.year BETWEEN 2021 AND 2025 
+                WHERE d.player_id = $selected_player_id AND s.year BETWEEN 2021 AND 2025 
                 ORDER BY s.year DESC";
     $def_res = $conn->query($def_sql);
     while($r = $def_res->fetch_assoc()) { $defense_stats[] = $r; }
@@ -80,35 +76,27 @@ if ($player_id > 0) {
     <meta charset="UTF-8">
     <title>선수 상세 기록</title>
     <style>
-        /* 공통 디자인 (다크모드) */
         body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: #121212; color: #E0E0E0; }
         .nav-bar { background-color: #212121; padding: 15px 0; border-bottom: 1px solid #333; }
         .nav-link { color: #CCC; text-decoration: none; padding: 0 15px; font-weight: bold; }
         .nav-link.active { color: #64ffda; border-bottom: 3px solid #64ffda; }
         .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
 
-        /* 검색 박스 스타일 */
-        .search-box { background: #212121; padding: 40px; border-radius: 12px; text-align: center; margin-bottom: 30px; border: 1px solid #333; }
-        .search-title { font-size: 24px; font-weight: bold; margin-bottom: 20px; color: #FFF; }
-        select, input[type="text"] { padding: 12px; border-radius: 6px; border: 1px solid #555; background: #333; color: #FFF; margin-right: 10px; }
-        input[type="text"] { width: 300px; }
-        .btn-search { background: #64ffda; color: #121212; border: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        .btn-search:hover { background: #92ffe6; }
+        .search-section { background: #212121; padding: 20px; border-radius: 12px; border: 1px solid #444; margin-bottom: 20px; }
+        .search-row { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; flex-wrap: wrap;}
+        .search-row:last-child { margin-bottom: 0; }
+        
+        select, button { padding: 10px 15px; border-radius: 6px; border: 1px solid #555; background: #333; color: #FFF; }
+        button { background: #64ffda; color: #121212; font-weight: bold; border: none; cursor: pointer; }
+        .label-text { font-weight: bold; color: #CCC; margin-right: 5px; }
 
-        /* 검색 결과 리스트 */
-        .result-list { list-style: none; padding: 0; margin-top: 20px; text-align: left; }
-        .result-item { background: #2c2c2c; padding: 15px; margin-bottom: 10px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; transition: 0.2s; }
-        .result-item:hover { background: #444; }
-        .result-item a { text-decoration: none; color: #FFF; width: 100%; display: block; }
+        .profile-card { background: #212121; padding: 30px; border-radius: 12px; border: 1px solid #444; margin-bottom: 30px; }
+        .profile-header { border-bottom: 1px solid #444; padding-bottom: 15px; margin-bottom: 15px; }
+        .profile-header h2 { margin: 0; font-size: 32px; color: #FFF; display: inline-block; margin-right: 15px; }
+        .tag { background: #333; padding: 5px 10px; border-radius: 4px; font-size: 14px; margin-right: 5px; color: #64ffda; border: 1px solid #64ffda; vertical-align: middle; }
+        .profile-info p { margin: 8px 0; color: #CCC; font-size: 16px; }
+        .profile-info strong { color: #FFF; width: 100px; display: inline-block; }
 
-        /* 상세 페이지 - 프로필 카드 */
-        .profile-card { background: #212121; padding: 30px; border-radius: 12px; display: flex; align-items: center; gap: 30px; margin-bottom: 30px; border: 1px solid #444; }
-        .profile-img { width: 120px; height: 120px; background: #444; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #888; }
-        .profile-info h2 { margin: 0 0 10px 0; font-size: 32px; color: #FFF; }
-        .profile-info p { margin: 5px 0; color: #CCC; font-size: 16px; }
-        .tag { background: #333; padding: 5px 10px; border-radius: 4px; font-size: 14px; margin-right: 10px; color: #64ffda; border: 1px solid #64ffda; }
-
-        /* 스탯 테이블 섹션 */
         .stat-section { margin-bottom: 40px; }
         .section-header { display: flex; align-items: center; margin-bottom: 15px; }
         .badge-box { background: #64ffda; color: #121212; padding: 8px 16px; border-radius: 6px; font-weight: bold; margin-right: 15px; }
@@ -118,6 +106,8 @@ if ($player_id > 0) {
         table.stat-table th { background: #333; color: #FFF; padding: 12px; text-align: center; border-bottom: 1px solid #444; white-space: nowrap;}
         table.stat-table td { padding: 12px; text-align: center; border-bottom: 1px solid #444; color: #E0E0E0; }
         table.stat-table tr:last-child td { border-bottom: none; }
+        
+        .empty-msg { text-align:center; padding: 80px; color: #777; font-size: 1.2em; }
     </style>
 </head>
 <body>
@@ -127,7 +117,7 @@ if ($player_id > 0) {
         <a href="/team17/cost_efficiency_rank.php" class="nav-link">가성비 랭킹</a>
         <a href="/team17/player_detail.php" class="nav-link active">선수별 페이지</a>
         <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
-        <a href="/team17/analysis_window.php" class="nav-link">선수 성장 추이</a>
+        <a href="/team17/player_growth.php" class="nav-link">선수 성장 추이</a>
         <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 연봉</a>
         <a href="/team17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
         <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
@@ -137,58 +127,56 @@ if ($player_id > 0) {
 
 <div class="container">
 
-    <div class="search-box">
-        <div class="search-title">선수 검색</div>
-        <form method="GET" action="player_detail.php">
-            <select name="team">
-                <option value="ALL">팀 전체</option>
-                <?php foreach($teams as $id => $name): ?>
-                    <option value="<?php echo $id; ?>" <?php echo ($team_filter == $id) ? 'selected' : ''; ?>>
-                        <?php echo $name; ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <select name="pos">
-                <option value="ALL">포지션 전체</option>
-                <?php foreach($positions as $pos): ?>
-                    <option value="<?php echo $pos; ?>" <?php echo ($pos_filter == $pos) ? 'selected' : ''; ?>>
-                        <?php echo $pos; ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <input type="text" name="keyword" placeholder="선수 이름을 입력하세요" value="<?php echo htmlspecialchars($search_keyword); ?>">
-            <button type="submit" class="btn-search">검색</button>
-        </form>
+    <div class="search-section">
+        <form method="GET">
+            <div class="search-row">
+                <span class="label-text">1. 필터</span>
+                <select name="f_team" onchange="this.form.submit()">
+                    <option value="ALL">전체 구단</option>
+                    <?php foreach($teams as $id => $name): ?>
+                        <option value="<?php echo $id; ?>" <?php echo ($filter_team == $id) ? 'selected' : ''; ?>><?php echo $name; ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select name="f_pos" onchange="this.form.submit()">
+                    <option value="ALL">전체 포지션</option>
+                    <?php foreach($positions as $pos): ?>
+                        <option value="<?php echo $pos; ?>" <?php echo ($filter_pos == $pos) ? 'selected' : ''; ?>><?php echo $pos; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
 
-        <?php if (!empty($search_results) && !$player_info): ?>
-            <ul class="result-list">
-                <?php foreach($search_results as $p): ?>
-                    <li class="result-item">
-                        <a href="player_detail.php?player_id=<?php echo $p['player_id']; ?>">
-                            <strong><?php echo htmlspecialchars($p['name']); ?></strong> 
-                            <span style="color:#888; margin-left:10px;">
-                                <?php echo $p['team_name']; ?> | <?php echo $p['pos_category']; ?>
-                            </span>
-                        </a>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        <?php endif; ?>
+            <div class="search-row">
+                <span class="label-text">2. 선택</span>
+                <select name="player_id" style="width: 300px;">
+                    <?php if(empty($players)): ?>
+                        <option value="0">조건에 맞는 선수가 없습니다</option>
+                    <?php else: ?>
+                        <option value="0" disabled <?php echo ($selected_player_id == 0) ? 'selected' : ''; ?>>선수를 선택하세요</option>
+                        <?php foreach($players as $p): ?>
+                            <option value="<?php echo $p['player_id']; ?>" <?php echo ($selected_player_id == $p['player_id'] ? 'selected' : ''); ?>>
+                                <?php echo $p['name']; ?> (<?php echo $p['team_name']; ?> | <?php echo $p['pos_category']; ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </select>
+                <button type="submit" style="background:#fcc419; color:#000;">조회하기</button>
+            </div>
+        </form>
     </div>
 
     <?php if ($player_info): ?>
         
         <div class="profile-card">
-            <div class="profile-img">IMG</div>
-            <div class="profile-info">
+            <div class="profile-header">
                 <h2><?php echo htmlspecialchars($player_info['name']); ?></h2>
-                <p>
-                    <span class="tag"><?php echo $player_info['team_name']; ?></span>
-                    <span class="tag"><?php echo $player_info['pos_category']; ?></span>
-                </p>
-                <p><strong>생년월일:</strong> <?php echo $player_info['birth_date']; ?></p>
-                <p><strong>입단 계약금:</strong> <?php echo number_format($player_info['signing_bonus']); ?>만원</p>
-                <p><strong>경력:</strong> <?php echo htmlspecialchars($player_info['career']); ?></p>
+                <span class="tag"><?php echo $player_info['team_name']; ?></span>
+                <span class="tag"><?php echo $player_info['pos_category']; ?></span>
+            </div>
+            <div class="profile-info">
+                <p><strong>생년월일</strong> <?php echo $player_info['birth_date']; ?></p>
+                <p><strong>등번호</strong> No.<?php echo $player_info['uniform_number']; ?></p>
+                <p><strong>지명 순위</strong> <?php echo htmlspecialchars($player_info['draft_rank']); ?></p>
+                <p><strong>경력</strong> <?php echo htmlspecialchars($player_info['career']); ?></p>
             </div>
         </div>
 
@@ -206,17 +194,15 @@ if ($player_id > 0) {
                         <th>타석</th>
                         <th>타수</th>
                         <th>안타</th>
-                        <th>홈런</th>
                         <th>타점</th>
                         <th>도루</th>
                         <th>출루율</th>
-                        <th>장타율</th>
                         <th>WAR</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($attack_stats)): ?>
-                        <tr><td colspan="12">기록이 없습니다.</td></tr>
+                        <tr><td colspan="10">기록이 없습니다.</td></tr>
                     <?php else: ?>
                         <?php foreach($attack_stats as $stat): ?>
                         <tr>
@@ -226,11 +212,9 @@ if ($player_id > 0) {
                             <td><?php echo $stat['ePA']; ?></td>
                             <td><?php echo $stat['AB']; ?></td>
                             <td><?php echo $stat['H']; ?></td>
-                            <td><?php echo $stat['HR']; ?></td>
                             <td><?php echo $stat['RBI']; ?></td>
                             <td><?php echo $stat['SB']; ?></td>
                             <td><?php echo $stat['OBP']; ?></td>
-                            <td><?php echo $stat['SLG']; ?></td>
                             <td><?php echo $stat['OWAR']; ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -252,13 +236,15 @@ if ($player_id > 0) {
                         <th>선발</th>
                         <th>보살(ASS)</th>
                         <th>실책(E)</th>
-                        <th>RF9</th>
-                        <th>dWAR</th>
+                        <th>RF(아웃카운트관여도)</th>
+                        <th>실책득점기여(ErrR)</th>
+                        <th>수비득점기여(RAA)</th>
+                        <th>WAA(수비 승리기여도)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($defense_stats)): ?>
-                        <tr><td colspan="7">기록이 없습니다.</td></tr>
+                        <tr><td colspan="9">기록이 없습니다.</td></tr>
                     <?php else: ?>
                         <?php foreach($defense_stats as $stat): ?>
                         <tr>
@@ -268,7 +254,9 @@ if ($player_id > 0) {
                             <td><?php echo $stat['ASS']; ?></td>
                             <td><?php echo $stat['E']; ?></td>
                             <td><?php echo $stat['RF9']; ?></td>
-                            <td style="color:#64ffda; font-weight:bold;"><?php echo $stat['dWAR']; ?></td>
+                            <td><?php echo $stat['Err_RAA']; ?></td>
+                            <td><?php echo $stat['RAA']; ?></td>
+                            <td><?php echo $stat['WAAwoPOS']; ?></td>
                         </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -276,6 +264,10 @@ if ($player_id > 0) {
             </table>
         </div>
 
+    <?php else: ?>
+        <div class="empty-msg">
+            선수를 선택하고 <strong>[조회하기]</strong> 버튼을 눌러주세요.
+        </div>
     <?php endif; ?>
 
 </div>
