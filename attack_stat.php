@@ -1,47 +1,42 @@
 <?php
 
-// 1. DB 연결 설정 
-$host = "localhost";
-$user = "root";      // XAMPP 기본 아이디
-$pw = "";            // XAMPP 기본 비번
-$dbName = "team17";  //  DB 이름 확인 
-
-$conn = new mysqli($host, $user, $pw, $dbName);
-
-// 연결 실패하면 에러 메시지 출력 후 종료
-if ($conn->connect_error) {
-    die("DB 연결 실패: " . $conn->connect_error);
-}
-
+// 1. DB 연결 설정
+include 'db_connect.php'; 
 
 // 2. 변수 초기화
-$current_year = 2025;
-$current_season_id = 11; // 2025년
+// $current_year는 $current_season_id를 기반으로 나중에 설정
+$current_season_id = 11; // 2025년 (기본값)
 
 // 3. 시즌 목록 가져오기
 $seasons_option = [];
 $season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
 $season_result = $conn->query($season_query);
+
 if ($season_result) {
     while ($row = $season_result->fetch_assoc()) {
         $seasons_option[$row['season_id']] = $row['year'];
     }
+    
+    if (!empty($seasons_option)) {
+        $current_season_id = array_key_first($seasons_option);
+    }
 }
-
 // 4. 사용자 입력 처리
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
     $current_season_id = intval($_POST['season_id']);
-    if(isset($seasons_option[$current_season_id])) {
-        $current_year = $seasons_option[$current_season_id];
-    }
 }
+
+// 선택된 시즌 ID에 해당하는 연도 설정
+$current_year = $seasons_option[$current_season_id] ?? 2025;
+
 
 // 5. 데이터 조회 쿼리
 $sql = "
     SELECT 
         p.name, 
         t.team_name, 
-        a.* FROM attack_stat a
+        a.AVG, a.G, a.AB, a.R, a.H, a.HR, a.RBI, a.OWAR, a.dWAR, a.ePA, a.OBP, a.SLG, a.wRC_plus
+    FROM attack_stat a
     JOIN player p ON a.player_id = p.player_id
     LEFT JOIN team t ON p.team_id = t.team_id
     WHERE a.season_id = ? 
@@ -50,7 +45,11 @@ $sql = "
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $current_season_id);
-$stmt->execute();
+// 쿼리 실행 실패 시 에러 출력
+if (!$stmt->execute()) {
+    die("쿼리 실행 오류: " . $stmt->error);
+}
+
 $result = $stmt->get_result();
 
 $attack_data = [];
@@ -59,7 +58,7 @@ while ($row = $result->fetch_assoc()) {
 }
 
 $stmt->close();
-// $conn->close(); 
+// $conn->close();
 ?>
 
 <!DOCTYPE html>
@@ -131,7 +130,8 @@ $stmt->close();
                 <th>안타(H)</th>
                 <th>홈런(HR)</th>
                 <th>타점(RBI)</th>
-                <th>WAR</th>
+                <th>oWAR</th> 
+                <th>dWAR</th> 
             </tr>
         </thead>
         <tbody>
@@ -150,6 +150,7 @@ $stmt->close();
                 <td><?php echo $row["HR"]; ?></td>
                 <td><?php echo $row["RBI"]; ?></td>
                 <td><?php echo $row["OWAR"]; ?></td>
+                <td><?php echo $row["dWAR"]; ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>

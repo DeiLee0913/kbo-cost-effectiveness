@@ -1,55 +1,56 @@
 <?php
 
+// 1. DB 연결 설정
+include 'db_connect.php'; 
 
-$host = "localhost";
-$user = "root";      // XAMPP 기본 아이디
-$pw = "";            // XAMPP 기본 비번
-$dbName = "team17";  
+// 2. 변수 초기화
+$current_season_id = 11; // 2025년 (기본값)
 
-$conn = new mysqli($host, $user, $pw, $dbName);
-
-// 연결 실패하면 에러 메시지 출력 후 종료
-if ($conn->connect_error) {
-    die("DB 연결 실패: " . $conn->connect_error);
-}
-
-// 2. 변수 초기화 (기본값 2025년)
-$current_year = 2025;
-$current_season_id = 11; // 2025년 season_id
-
-// 3. 시즌 목록 가져오기
+// 3. 시즌 목록 가져오기 및 현재 시즌 ID 결정
 $seasons_option = [];
 $season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
 $season_result = $conn->query($season_query);
+
 if ($season_result) {
     while ($row = $season_result->fetch_assoc()) {
         $seasons_option[$row['season_id']] = $row['year'];
     }
-}
-
-// 4. 사용자 입력 처리 (연도 변경 시)
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
-    $current_season_id = intval($_POST['season_id']);
-    if(isset($seasons_option[$current_season_id])) {
-        $current_year = $seasons_option[$current_season_id];
+    
+    if (!empty($seasons_option)) {
+        $current_season_id = array_key_first($seasons_option);
     }
 }
+
+// 4. 사용자 입력 처리 (POST 요청이 있으면 덮어쓰기)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
+    $selected_id = intval($_POST['season_id']);
+    if (array_key_exists($selected_id, $seasons_option)) {
+        $current_season_id = $selected_id;
+    }
+}
+
+// 선택된 시즌 ID에 해당하는 연도 설정
+$current_year = $seasons_option[$current_season_id] ?? 2025;
+
 
 // 5. 수비 데이터 조회 쿼리
 $sql = "
     SELECT 
         p.name, 
         t.team_name, 
-        d.* FROM defense_stat d
+        d.G, d.GS, d.ASS, d.E, d.RF9, d.RAA, d.POSAdj, d.Err_RAA, d.WAAwoPOS
+    FROM defense_stat d
     JOIN player p ON d.player_id = p.player_id
     LEFT JOIN team t ON p.team_id = t.team_id
     WHERE d.season_id = ? 
-    ORDER BY d.dWAR DESC
-";
+    ORDER BY d.RAA DESC, d.GS DESC";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $current_season_id);
-$stmt->execute();
+
+if (!$stmt->execute()) {
+    die("쿼리 실행 오류: " . $stmt->error . " | Season ID: " . $current_season_id);
+}
 $result = $stmt->get_result();
 
 $defense_data = [];
@@ -125,7 +126,7 @@ $stmt->close();
         <button type="submit">조회</button>
     </form>
 
-    <table id="defenseTable" class="display" style="width:100%">
+<table id="defenseTable" class="display" style="width:100%">
         <thead>
             <tr>
                 <th>순위</th>
@@ -136,8 +137,7 @@ $stmt->close();
                 <th>보살(ASS)</th>
                 <th>실책(E)</th>
                 <th>RF9</th>
-                <th>dWAR</th>
-            </tr>
+                <th>RAA</th>       <th>POSAdj</th>    <th>Err_RAA</th> </tr>
         </thead>
         <tbody>
             <?php 
@@ -152,19 +152,19 @@ $stmt->close();
                 <td><?php echo $row["ASS"]; ?></td>
                 <td><?php echo $row["E"]; ?></td>
                 <td><?php echo $row["RF9"]; ?></td>
-                <td style="color: #64ffda; font-weight:bold;"><?php echo $row["dWAR"]; ?></td>
-            </tr>
+                <td style="color: #64ffda; font-weight:bold;"><?php echo $row["RAA"]; ?></td> <td><?php echo $row["POSAdj"]; ?></td>    <td><?php echo $row["Err_RAA"]; ?></td>  </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 </div>
+
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script>
     $(document).ready(function() {
         $('#defenseTable').DataTable({
-            "order": [[ 8, "desc" ]], // 기본 정렬: dWAR(마지막 컬럼) 내림차순
+            "order": [[ 8, "desc" ]],
             "pageLength": 20,
             "language": {
                 "search": "선수 검색:",
