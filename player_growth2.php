@@ -15,7 +15,7 @@ while ($row = $p_res->fetch_assoc()) {
 
 $filter_team = isset($_GET['f_team']) ? $_GET['f_team'] : 'ALL';
 $filter_pos = isset($_GET['f_pos']) ? $_GET['f_pos'] : 'ALL';
-// 이름 검색 필터($filter_name) 로직 제거
+
 
 $player_sql = "
     SELECT p.player_id, p.name, t.team_id, t.team_name, pd.pos_category
@@ -174,7 +174,7 @@ if ($selected_player_id > 0) {
         <a href="/team17/player_detail.php" class="nav-link">선수별 페이지</a>
         <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
         <a href="/team17/player_growth.php" class="nav-link active">선수 성장 추이</a>
-        <a href="/team17/analysis_aggregate.php" class="nav-link">팀/포지션별 연봉</a>
+        <a href="/team17/average.php" class="nav-link">팀/포지션별 연봉</a>
         <a href="/team17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
         <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
         <a href="/team17/defense_stat.php" class="nav-link">수비 기록</a>

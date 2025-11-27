@@ -3,7 +3,7 @@
 
 include 'db_connect.php';
 
-// 1. 필터 옵션 가져오기
+
 $seasons = [];
 $teams = [];
 $positions = [];
@@ -17,12 +17,11 @@ while($r = $res->fetch_assoc()) { $teams[$r['team_id']] = $r['team_name']; }
 $res = $conn->query("SELECT DISTINCT pos_category FROM position_detail WHERE pos_category IS NOT NULL");
 while($r = $res->fetch_assoc()) { $positions[] = $r['pos_category']; }
 
-// 2. 사용자 입력 변수
+
 $search_season = isset($_GET['season']) ? $_GET['season'] : 11;
 $search_team = isset($_GET['team']) ? $_GET['team'] : 'ALL';
 $search_pos = isset($_GET['pos']) ? $_GET['pos'] : '투수';
 
-// 3. 데이터 조회 쿼리
 $sql = "
     SELECT 
         t.team_name,
@@ -58,7 +57,7 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 $stats_list = [];
-// 차트용 배열 초기화
+
 $chart_labels = [];
 $chart_salary = [];
 $chart_war = [];
@@ -66,11 +65,11 @@ $chart_war = [];
 while ($row = $result->fetch_assoc()) {
     $stats_list[] = $row;
     
-    // 차트 데이터 채우기
+
     $chart_labels[] = $row['team_name'];
-    $chart_salary[] = round($row['avg_salary']); // 반올림
+    $chart_salary[] = round($row['avg_salary']);
     
-    // WAR가 없으면 0으로 처리
+ 
     $total_war = ($row['avg_owar'] ?? 0) + ($row['avg_dwar'] ?? 0);
     $chart_war[] = round($total_war, 2);
 }
@@ -122,7 +121,7 @@ while ($row = $result->fetch_assoc()) {
         <a href="/team17/player_detail.php" class="nav-link">선수별 페이지</a>
         <a href="/team17/fa_vote.php" class="nav-link">선수 연봉 투표</a>
         <a href="/team17/analysis_window.php" class="nav-link">선수 성장 추이</a>
-        <a href="/team17/analysis_aggregate.php" class="nav-link active">팀/포지션별 연봉</a>
+        <a href="/team17/average.php" class="nav-link active">팀/포지션별 연봉</a>
         <a href="/team17/analysis_rollup.php" class="nav-link">연봉 계층별 효율</a>
         <a href="/team17/attack_stat.php" class="nav-link">타격 기록</a>
         <a href="/team17/defense_stat.php" class="nav-link">수비 기록</a>

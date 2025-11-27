@@ -1,13 +1,11 @@
 <?php
 
-// 1. DB 연결 설정
+
 include 'db_connect.php'; 
 
-// 2. 변수 초기화
-// $current_year는 $current_season_id를 기반으로 나중에 설정
-$current_season_id = 11; // 2025년 (기본값)
 
-// 3. 시즌 목록 가져오기
+$current_season_id = 11; 
+
 $seasons_option = [];
 $season_query = "SELECT season_id, year FROM season ORDER BY year DESC";
 $season_result = $conn->query($season_query);
@@ -21,16 +19,15 @@ if ($season_result) {
         $current_season_id = array_key_first($seasons_option);
     }
 }
-// 4. 사용자 입력 처리
+
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['season_id'])) {
     $current_season_id = intval($_POST['season_id']);
 }
 
-// 선택된 시즌 ID에 해당하는 연도 설정
+
 $current_year = $seasons_option[$current_season_id] ?? 2025;
 
 
-// 5. 데이터 조회 쿼리
 $sql = "
     SELECT 
         p.name, 
@@ -45,7 +42,7 @@ $sql = "
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $current_season_id);
-// 쿼리 실행 실패 시 에러 출력
+
 if (!$stmt->execute()) {
     die("쿼리 실행 오류: " . $stmt->error);
 }
@@ -58,7 +55,7 @@ while ($row = $result->fetch_assoc()) {
 }
 
 $stmt->close();
-// $conn->close();
+
 ?>
 
 <!DOCTYPE html>
